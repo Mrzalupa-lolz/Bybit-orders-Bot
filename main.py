@@ -3,14 +3,14 @@ import math
 import asyncio
 import os
 from typing import Any, Dict, List, Optional
-
+from dotenv import load_dotenv
 import aiohttp
 import aiosqlite
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 BYBIT_P2P_URL = "https://www.bybit.com/x-api/fiat/otc/item/online"
-
+load_dotenv()
 
 def get_env_str(key: str, default: str = "") -> str:
     return os.getenv(key, default)
