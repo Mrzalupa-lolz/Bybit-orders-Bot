@@ -353,7 +353,6 @@ class TelegramNotifier:
 
 
 async def main() -> None:
-    # Получаем настройки из переменных окружения
     TOKEN_ID = get_env_str('TOKEN_ID', 'USDT')
     CURRENCY_ID = get_env_str('CURRENCY_ID', 'RUB')
     SIDE_VALUE = get_env_int('SIDE_VALUE', 1)
@@ -374,13 +373,11 @@ async def main() -> None:
     MIN_AMOUNT_LIMIT = get_env_optional_float('MIN_AMOUNT_LIMIT')
     MAX_AMOUNT_LIMIT = get_env_optional_float('MAX_AMOUNT_LIMIT')
 
-    # Проверка обязательных параметров
     if not TG_BOT_TOKEN:
         raise ValueError("TG_BOT_TOKEN не указан в .env файле")
     if not TG_CHAT_ID:
         raise ValueError("TG_CHAT_ID не указан в .env файле")
 
-    # Инициализация
     repo = OrderRepository(DB_PATH)
     await repo.init()
     
