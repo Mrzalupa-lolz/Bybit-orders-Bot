@@ -1,6 +1,7 @@
 import time
 import math
 import asyncio
+import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -8,8 +9,54 @@ import aiosqlite
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-
 BYBIT_P2P_URL = "https://www.bybit.com/x-api/fiat/otc/item/online"
+
+
+def get_env_str(key: str, default: str = "") -> str:
+    return os.getenv(key, default)
+
+def get_env_int(key: str, default: int = 0) -> int:
+    try:
+        return int(os.getenv(key, str(default)))
+    except:
+        return default
+
+def get_env_float(key: str, default: float = 0.0) -> float:
+    try:
+        return float(os.getenv(key, str(default)))
+    except:
+        return default
+
+def get_env_bool(key: str, default: bool = False) -> bool:
+    val = os.getenv(key, str(default)).lower()
+    return val in ('true', '1', 'yes', 'y', 't')
+
+def get_env_optional_float(key: str) -> Optional[float]:
+    val = os.getenv(key)
+    if not val:
+        return None
+    try:
+        return float(val)
+    except:
+        return None
+
+def get_env_optional_int(key: str) -> Optional[int]:
+    val = os.getenv(key)
+    if not val:
+        return None
+    try:
+        return int(val)
+    except:
+        return None
+
+def get_env_int_list(key: str) -> List[int]:
+    val = os.getenv(key, '')
+    if not val:
+        return []
+    try:
+        return [int(x.strip()) for x in val.split(',') if x.strip()]
+    except:
+        return []
 
 
 class BybitP2PClient:
@@ -19,15 +66,12 @@ class BybitP2PClient:
         currency_id: str,
         side_value: int,
         page_size: int,
-        item_region: int,
-        payments: List[str],
         payment_period: List[int],
         sort_type: str,
         can_trade: bool,
         va_maker: bool,
         bulk_maker: bool,
-        verification_filter: int,
-        cookie: Optional[str],
+        verification_filter: bool,
         concurrency: int = 8,
         timeout_sec: float = 30.0,
     ) -> None:
@@ -35,15 +79,12 @@ class BybitP2PClient:
         self.currency_id = currency_id
         self.side_value = side_value
         self.page_size = page_size
-        self.item_region = item_region
-        self.payments = payments
         self.payment_period = payment_period
         self.sort_type = sort_type
         self.can_trade = can_trade
         self.va_maker = va_maker
         self.bulk_maker = bulk_maker
         self.verification_filter = verification_filter
-        self.cookie = cookie
         self.concurrency = concurrency
         self.timeout_sec = timeout_sec
 
@@ -61,15 +102,13 @@ class BybitP2PClient:
                 "Chrome/140.0.0.0 Safari/537.36"
             ),
         }
-        if self.cookie:
-            headers["cookie"] = self.cookie
         return headers
 
     def _build_payload(self, page: int) -> Dict[str, Any]:
         return {
             "tokenId": self.token_id,
             "currencyId": self.currency_id,
-            "payment": self.payments,
+            "payment": [],
             "side": str(self.side_value),
             "size": str(self.page_size),
             "page": str(page),
@@ -77,10 +116,10 @@ class BybitP2PClient:
             "vaMaker": self.va_maker,
             "bulkMaker": self.bulk_maker,
             "canTrade": self.can_trade,
-            "verificationFilter": self.verification_filter,
+            "verificationFilter": "2" if self.verification_filter is True else "0",
             "sortType": self.sort_type,
             "paymentPeriod": self.payment_period,
-            "itemRegion": self.item_region,
+            "itemRegion": 1,
         }
 
     async def _fetch_page(self, session: aiohttp.ClientSession, page: int, retries: int = 3, backoff_sec: float = 1.5) -> Dict[str, Any]:
@@ -227,7 +266,6 @@ class OrderFilter:
         filtered_orders = []
         
         for order in orders:
-            # Проверяем цену
             try:
                 price = float(order.get('price', 0))
                 if self.max_price is not None and price > self.max_price:
@@ -235,7 +273,7 @@ class OrderFilter:
             except (ValueError, TypeError):
                 continue
             
-            # Проверяем минимальный лимит
+
             try:
                 min_amount = float(order.get('minAmount', 0))
                 if self.min_amount_limit is not None and min_amount < self.min_amount_limit:
@@ -243,7 +281,6 @@ class OrderFilter:
             except (ValueError, TypeError):
                 continue
             
-            # Проверяем максимальный лимит
             try:
                 max_amount = float(order.get('maxAmount', 0))
                 if self.max_amount_limit is not None and max_amount > self.max_amount_limit:
@@ -316,33 +353,32 @@ class TelegramNotifier:
 
 
 async def main() -> None:
-    # Конфигурация
-    TOKEN_ID = "USDT"
-    CURRENCY_ID = "RUB"
-    SIDE_VALUE = 1  # 0 - покупка usdt, 1 - продажа usdt
-    PAGE_SIZE = 50
-    ITEM_REGION = 1
-    PAYMENTS: List[str] = []
-    PAYMENT_PERIOD: List[int] = []
-    SORT_TYPE = "OVERALL_RANKING"
-    CAN_TRADE = True
-    VA_MAKER = False
-    BULK_MAKER = False
-    VERIFICATION_FILTER = 0
-    COOKIE: Optional[str] = None
-    CONCURRENCY = 8
-    MAX_PAGES: Optional[int] = 10
-    POLL_INTERVAL_SEC = 20
-    DB_PATH = "orders.db"
-    
-    # Настройки Telegram
-    TG_BOT_TOKEN = "BOT_TOKEN"
-    TG_CHAT_ID = "-TELEGRAM_GROUP_ID"
-    
-    # Фильтры
-    MAX_PRICE = 82.0  # Максимальная цена для уведомления
-    MIN_AMOUNT_LIMIT = 0.0  # Минимальный лимит ордера
-    MAX_AMOUNT_LIMIT = 5000.0  # Максимальный лимит ордера
+    # Получаем настройки из переменных окружения
+    TOKEN_ID = get_env_str('TOKEN_ID', 'USDT')
+    CURRENCY_ID = get_env_str('CURRENCY_ID', 'RUB')
+    SIDE_VALUE = get_env_int('SIDE_VALUE', 1)
+    PAGE_SIZE = get_env_int('PAGE_SIZE', 50)
+    PAYMENT_PERIOD = get_env_int_list('PAYMENT_PERIOD')
+    SORT_TYPE = get_env_str('SORT_TYPE', 'TRADE_PRICE')
+    CAN_TRADE = get_env_bool('CAN_TRADE', True)
+    VA_MAKER = get_env_bool('VA_MAKER', False)
+    BULK_MAKER = get_env_bool('BULK_MAKER', False)
+    VERIFICATION_FILTER = get_env_bool('VERIFICATION_FILTER', False)
+    CONCURRENCY = get_env_int('CONCURRENCY', 8)
+    MAX_PAGES = get_env_optional_int('MAX_PAGES')
+    POLL_INTERVAL_SEC = get_env_int('POLL_INTERVAL_SEC', 20)
+    DB_PATH = get_env_str('DB_PATH', 'orders.db')
+    TG_BOT_TOKEN = get_env_str('TG_BOT_TOKEN')
+    TG_CHAT_ID = get_env_str('TG_CHAT_ID')
+    MAX_PRICE = get_env_optional_float('MAX_PRICE')
+    MIN_AMOUNT_LIMIT = get_env_optional_float('MIN_AMOUNT_LIMIT')
+    MAX_AMOUNT_LIMIT = get_env_optional_float('MAX_AMOUNT_LIMIT')
+
+    # Проверка обязательных параметров
+    if not TG_BOT_TOKEN:
+        raise ValueError("TG_BOT_TOKEN не указан в .env файле")
+    if not TG_CHAT_ID:
+        raise ValueError("TG_CHAT_ID не указан в .env файле")
 
     # Инициализация
     repo = OrderRepository(DB_PATH)
@@ -353,15 +389,12 @@ async def main() -> None:
         currency_id=CURRENCY_ID,
         side_value=SIDE_VALUE,
         page_size=PAGE_SIZE,
-        item_region=ITEM_REGION,
-        payments=PAYMENTS,
         payment_period=PAYMENT_PERIOD,
         sort_type=SORT_TYPE,
         can_trade=CAN_TRADE,
         va_maker=VA_MAKER,
         bulk_maker=BULK_MAKER,
         verification_filter=VERIFICATION_FILTER,
-        cookie=COOKIE,
         concurrency=max(1, CONCURRENCY),
     )
     
